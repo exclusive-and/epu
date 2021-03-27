@@ -52,7 +52,7 @@ Github has an issues section - if you find an issue, spot a bug, have any sugges
 
 I haven't decided on a license yet.
 I hope this gets spread far and wide, so I want to choose a license that's as open and as accessible as possible.
-Current front-runner is the BSD-2 license; if you know any better once please open an issue and title it something containing "License Suggestion".
+Current front-runner is the BSD-2 license; if you know any better ones please open an issue and title it something containing "License Suggestion".
 
 # Acknowledgements
 

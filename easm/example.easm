@@ -1,0 +1,18 @@
+
+-- Load 3 into r0
+    ldi     3
+    atob    r0
+-- Add 5 and 3, store the result in r1
+    ldi     5
+    add     r0      
+    atob    r1
+-- Load in FF to rF to make it our jump point
+    ldi     ff
+    atob    rf
+-- Load in 8 and compare it with r1
+    ldi     8
+    seq     r1
+-- If 8 and r1 are equal, jump to FF
+    jnz     rf
+     
+

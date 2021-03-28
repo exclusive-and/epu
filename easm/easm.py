@@ -72,8 +72,8 @@ def printError (errinfo : AsmErrorInfo):
 
 # Read the contents of a file. Only return an error if we failed to do that.
 
-def readFile (filename : str) -> Tuple[AsmErrorInfo, List[str]]:
-    err = None
+def readFile (filename : str) -> Tuple[List[AsmErrorInfo], List[str]]:
+    errs = []
     fc = []
 
     try:
@@ -83,9 +83,9 @@ def readFile (filename : str) -> Tuple[AsmErrorInfo, List[str]]:
 
     except OSError as ex:
         errtext = "{}".format (ex)
-        err = AsmErrorInfo (AsmError.FILE_OPEN_ERROR, errtext)
+        errs += [AsmErrorInfo (AsmError.FILE_OPEN_ERROR, errtext)]
 
-    return err, fc
+    return errs, fc
 
 
 # A simple line and line number pairing for convenience
@@ -98,39 +98,24 @@ class Line:
 
 # Skip any spaces that may follow in the line
 def skipWhitespace (colno : int, line : Line) -> int:
-    while True:
-        if colno == len (line.text):
-            break
-        elif line.text[colno] != " " and line.text[colno] != "\t":
-            break
-        else:
-            colno += 1
+    while line.text[colno] == " " or line.text[colno] == "\t":
+        colno += 1
     return colno
 
 # Skip any whitespaces and return the first thing that has alphanumeric characters
 def getWord (colno : int, line : Line) -> Tuple[int, str]:
     colno = skipWhitespace (colno, line)
     start = colno
-    while True:
-        if colno == len (line.text):
-            break
-        elif not line.text[colno].lower () in "abcdefghijklmnopqrstuvwxyz0123456789_":
-            break
-        else:
-            colno += 1
+    while line.text[colno].lower () in "abcdefghijklmnopqrstuvwxyz0123456789_":
+        colno += 1
     return colno, line.text[start:colno].lower()
 
 # Skip any whitespaces and return the first thing if it looks like an integer
 def getImmediate (colno : int, line : Line) -> Tuple[int, int]:
     colno = skipWhitespace (colno, line)
     start = colno
-    while True:
-        if colno == len (line.text):
-            break
-        elif not line.text[colno].lower () in "0123456789abcdef":
-            break
-        else:
-            colno += 1
+    while line.text[colno].lower () in "0123456789abcdef":
+        colno += 1
 
     if start != colno:
         return colno, int (line.text[start:colno], 16)
@@ -197,7 +182,7 @@ def assembleLine (line : Line) -> Tuple[List[AsmErrorInfo], AssembleResult]:
     keywords = \
         { "ldi"  : Instr (Instr.LDI , Instr.IMMEDIATE)
         , "atob" : Instr (Instr.ATOB, Instr.REGISTER)
-        , "atob" : Instr (Instr.BTOA, Instr.REGISTER)
+        , "btoa" : Instr (Instr.BTOA, Instr.REGISTER)
         , "add"  : Instr (Instr.ADD , Instr.REGISTER)
         , "sub"  : Instr (Instr.SUB , Instr.REGISTER)
         , "seq"  : Instr (Instr.SEQ , Instr.REGISTER)
@@ -215,12 +200,12 @@ def assembleLine (line : Line) -> Tuple[List[AsmErrorInfo], AssembleResult]:
         , "r7"   : Register (7)
         , "r8"   : Register (8)
         , "r9"   : Register (9)
-        , "r10"  : Register (10)
-        , "r11"  : Register (11)
-        , "r12"  : Register (12)
-        , "r13"  : Register (13)
-        , "r14"  : Register (14)
-        , "r15"  : Register (15) }
+        , "ra"   : Register (10)
+        , "rb"   : Register (11)
+        , "rc"   : Register (12)
+        , "rd"   : Register (13)
+        , "re"   : Register (14)
+        , "rf"   : Register (15) }
 
     colno = 0
     colno = skipWhitespace (colno, line)
@@ -237,13 +222,13 @@ def assembleLine (line : Line) -> Tuple[List[AsmErrorInfo], AssembleResult]:
 
 
     # Check for comments
-    if line.text[colno : colno + 1] == "--":
+    if line.text[colno : colno + 2] == "--":
         result = AssembleResult (AssembleResult.COMMENT)
-        result.comment = line.text[colno + 2 :]
+        result.comment = line.text[colno + 2 : -1]
         return errors, result
 
     # Check for empty lines
-    if colno == len (line.text):
+    if line.text[colno] == "\n":
         result = AssembleResult (AssembleResult.EMPTY)
         return errors, result
 
@@ -285,7 +270,7 @@ def assembleLine (line : Line) -> Tuple[List[AsmErrorInfo], AssembleResult]:
         result.label = word
 
         # If the line ends here with just a label, that's okay.
-        if colno == len (line.text):
+        if line.text[colno] == "\n":
             return errors, result
 
 
@@ -327,6 +312,14 @@ def assembleLine (line : Line) -> Tuple[List[AsmErrorInfo], AssembleResult]:
             keyword = keywords[word]
             result.instruction.register = keyword.regnum
 
+
+    # I've been at this for too many hours today.
+    # For now, don't tolerate anything other than EOL after an instruction
+
+    colno = skipWhitespace (colno, line)
+    if line.text[colno] != "\n":
+        errors += [mkSyntaxError ("expected EOL")]
+
     return errors, result
 
 
@@ -350,6 +343,23 @@ def assembleLines (lines : List[str]) -> Tuple[List[AsmErrorInfo], List[Assemble
     return errors, results
 
 
+# Convert the abstract representation of the program into bytes
+
+def encodeAbstracts (abstracts : List[AssembleResult]) -> Tuple[List[AsmErrorInfo], List[int]]:
+
+    bytecodes = []
+
+    for ab in abstracts:
+        if ab.instruction.operandKind == Instr.IMMEDIATE:
+            bytecodes += [ab.instruction.mnemonic, ab.instruction.immediate]
+        elif ab.instruction.operandKind == Instr.REGISTER:
+            byte = ab.instruction.mnemonic
+            byte += ab.instruction.register << 4
+            bytecodes += [byte]
+
+    return [], bytecodes
+
+
 import sys
 
 def main ():
@@ -359,13 +369,24 @@ def main ():
     if len (sys.argv) < 2:
         errors += [AsmErrorInfo (AsmError.NO_SOURCE, "no input files given")]
 
-    else:
+    if len (errors) == 0:
         filename = sys.argv[1]
         errs, lines = readFile (filename)
-        errors += [errs]
-
-        errs, results = assembleLines (lines)
         errors += errs
+
+    abstracts = []
+    if len (errors) == 0:
+        errs, abstracts = assembleLines (lines)
+        errors += errs
+
+    bytecodes = []
+    if len (errors) == 0:
+        errs, bytecodes = encodeAbstracts (abstracts)
+        errors += errs
+
+    if len (errors) == 0:
+        for byte in bytecodes:
+            print ("{:02x}".format (byte))
 
     for error in errors:
         printError (error)
